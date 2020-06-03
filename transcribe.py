@@ -16,15 +16,19 @@ from magenta.models.onsets_frames_transcription import train_util
 from magenta.music import midi_io
 from magenta.music.protobuf import music_pb2
 from magenta.music import sequences_lib
+from utils import str2bool
 
-def main(input, output, checkpoint_dir):
-    model_type = "MAESTRO (Piano)" #@param ["MAESTRO (Piano)", "E-GMD (Drums)"]
+# silence tensorflow warnings
+tf.logging.set_verbosity(tf.logging.ERROR)
+
+def main(input, output):
+    MAESTRO_CHECKPOINT_DIR = '/data/maestro/train'
 
     config = configs.CONFIG_MAP['onsets_frames']
     hparams = config.hparams
     hparams.use_cudnn = False
     hparams.batch_size = 1
-
+    checkpoint_dir = MAESTRO_CHECKPOINT_DIR
 
     examples = tf.placeholder(tf.string, [None])
 
@@ -42,7 +46,6 @@ def main(input, output, checkpoint_dir):
     iterator = dataset.make_initializable_iterator()
     next_record = iterator.get_next()
 
-    #@title Audio Upload
     to_process = []
     def process(files):
         for fn in files:
@@ -61,7 +64,6 @@ def main(input, output, checkpoint_dir):
             to_process.append(example_list[0].SerializeToString())
             print('Processing complete for', fn)
 
-
             sess = tf.Session()
 
             sess.run([
@@ -78,14 +80,14 @@ def main(input, output, checkpoint_dir):
 
             input_fn = infer_util.labels_to_features_wrapper(transcription_data)
 
-    #@title Run inference
+            #@title Run inference
             prediction_list = list(
                 estimator.predict(
                     input_fn,
                     yield_single_examples=False))
             assert len(prediction_list) == 1
 
-    # Ignore warnings caused by pyfluidsynth
+            # Ignore warnings caused by pyfluidsynth
             import warnings
             warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
@@ -97,19 +99,17 @@ def main(input, output, checkpoint_dir):
             midi_filename = '{outputs}/{file}.mid'.format(outputs=output,file=pathname)
             midi_io.sequence_proto_to_midi_file(sequence_prediction, midi_filename)
 
-    files = ['{inputs}/{file}'.format(inputs=input, file=file) for file in os.listdir(input)]
+    files = ['{inputs}/{file}'.format(inputs=input, file=file) for file in os.listdir(input) if file.split('.').pop() == 'wav']
     print('the files', files)
     process(files)
-
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--checkpoint_dir')
-    parser.add_argument('--input')
-    parser.add_argument('--output')
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--output', required=True)
 
     args = parser.parse_args()
 
-    main(args.input, args.output, args.checkpoint_dir)
+    main(args.input, args.output)
